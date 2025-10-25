@@ -23,6 +23,7 @@ Hjkl is a non-modal editor, which means typing a character immediately inserts t
 - `C-a`: move cursor to start of line
 - `C-e`: move cursor to end of line
 - `C-u`: scroll up
+- `C-v`: scroll down
 - `Backspace`: delete character before cursor
 - `C-d`: delete character at cursor
 - `C-s`: save file
@@ -31,3 +32,10 @@ Hjkl is a non-modal editor, which means typing a character immediately inserts t
 # Building and Running
 
 Hjkl can be built with Make, requires variables `JACKAL` (Jackal compiler), `XRASM` (assembler), `XRLINK` (linker), and `RTLLIB` (object file of Jackal's standard library), all from the [XR/station SDK](https://github.com/xrarch/newsdk). The `run` convenience recipe also requires variables `RYFS`, `FOX32`, and `FOX32OS`.
+
+I personally just use a shell script to fill these in for me:
+
+```sh
+#/bin/sh
+make run JACKAL=../../newsdk/bin/jkl.exe XRASM=../../newsdk/bin/xrasm.exe XRLINK=../../newsdk/bin/xrlink.exe RTLLIB=../../newsdk/Rtl/build/fox32/Rtl.lib RYFS=../../ryfs/ryfs.py FOX32=../../vm/fox32 FOX32OS=../../os/fox32os.img
+```
