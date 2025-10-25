@@ -86,6 +86,17 @@ FN (RtlPrintCallbackF) RtljPrintCallback (
     buffer[0] = byte
     Write(stream, &buffer[0], 1)
 END
+// Dummy function required by the runtime library
+FN RtljLockStream (
+    IN handle : ^VOID
+) : UWORD
+END
+// Dummy function required by the runtime library
+FN RtljUnlockStream (
+    IN handle : ^VOID,
+    IN lockcontext : UWORD,
+)
+END
 
 // 1-bit images for each hexidecimal digit, for displaying non-printable bytes
 small_digits : UINT[16] = {
