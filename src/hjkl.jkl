@@ -1,3 +1,4 @@
+/// The entry point of the program. This passes the input/output file and the first 3 command line arguments from the stack (where fox32os puts them) into registers (where the Jackal calling convention expects them). The fifth parameter, the fourth command line argument, remains on the stack. Then the Main function is called, which must not return.
 #ASM [
     pop a0 // streamPtr
     pop a1 // arg0
@@ -6,8 +7,6 @@
     // arg3 is now on the top of stack
     call Main
 ]
-
-// Hey, this comment is getting a little long, don't you think?
 
 // macro definitions to make the Rtl library happy
 #DEFINE BLD_BITS 32
@@ -18,6 +17,7 @@
 #INCLUDE "os.hjk" // fox32rom bindings
 #INCLUDE "pt.jkl" // piece table implementation
 
+/// Returns the number of milliseconds since boot, as provided by the fox32 hardware.
 EXTERN FN Millis () : UWORD
 #ASM [
 Millis:
@@ -26,6 +26,7 @@ Millis:
     ret
 ]
 
+/// Trigger a breakpoint on fox32, delivering the user to the monitor. Note that fox32os includes a "recovery" option allowing control flow to return after calling this function.
 EXTERN FN Trap()
 #ASM [
 Trap:
@@ -34,50 +35,82 @@ Trap:
     ret
 ]
 
-EXTERN menu_bar : Menu // data table defining a menu bar in fox32os' required format
+/// A data table defining a menu bar in fox32os' required format.
+EXTERN menu_bar : Menu
 #ASM [
 menu_bar:
+    // Number of menus
     .db 1
+    // "items" and "name" table pairs for each menu
     .dp menu_file_items
     .dp menu_file_name
 menu_file_name:
+    // length, ASCII string, null
     .db 4 .ds "File" .db 0
 menu_file_items:
+    // number of menu items
     .db 1
+    // width of menu, generally 2 greater than the longest menu item
     .db 6
+    // length, ASCII string, null for each menu item
     .db 4 .ds "Save" .db 0
 ]
 
+/// A fully qualified fox32os file path.
 STRUCT FileLocation
     Disk : UBYTE,
     Name : ^UBYTE,
 END
 
-stream : ^File = NULLPTR // stdin and stdout
-file_loc : FileLocation // the disk id and name of the opened file
-window : Window // our gui window
-window_title := "Hjkl - 0:12345678.123" // text displayed at the title bar
-table : Pt // text data
-view_byte_offset : UWORD = 0 // start of text view
-cursor : UWORD = 0 // cursor position within file in bytes
-cursor_desired_offset : UWORD = 0 // how many columns further the cursor should "stick" to
-line_mode_visual : UBYTE = TRUE // Navigate by visual lines instead of absolute ones
-width : UBYTE = 32 * 2 // number of columns in the view buffer
-height : UBYTE = 20 // number of rows in the view buffer
-redraw : UBYTE = TRUE // redraw the text buffer?
-view_buffer : ^UBYTE = NULLPTR // a 2D array representing the visible portion of the text buffer
-is_ctrl : UBYTE = FALSE // is the user holding the Ctrl key?
+/// A file representing standard input and output on fox32os. This is initialized by PreMain and written to by RtlPrint.
+stream : ^File = NULLPTR
 
-// Bitbee
-// palette_fg : ULONG = 0xFF302B29
-// palette_bg : ULONG = 0xFF4AABCF
-// Paper palette
+/// The file path of the currently opened text file.
+file_loc : FileLocation
+
+/// A fox32os GUI window handle.
+window : Window
+
+/// The mutable character array representing the null terminated title of the window.
+window_title := "Hjkl - 0:12345678.123"
+
+/// The text data.
+table : Pt // text data
+
+/// The start of the currently visible portion of the text, a.k.a. the top-left character of the window's text buffer. It is an index into `table` and must be within [0, ???].
+view_byte_offset : UWORD = 0
+
+/// The cursor position within the text in bytes. It is an index into `table` and must be within [0, table.length()]. (Note the right inclusive bound!) This position is the character (or end of text) that is visually highlighted, and the index at which text is inserted. Note that this means text is inserted *to the left* of the highlighted character.
+cursor : UWORD = 0
+
+/// How many columns further the cursor should "stick" to. When moving the cursor vertically across lines, this allows the cursor's horizontal position to be preserved even when navigating across lines that are shorter than that horizontal position.
+cursor_desired_offset : UWORD = 0
+
+/// A toggle for navigating by visual lines instead of absolute ones. For example, this changes how moving the cursor up and down behaves on a line that wraps. This toggle is underdocumented and poorly tested currently.
+line_mode_visual : UBYTE = TRUE
+
+/// The number of columns in the view buffer
+width : UBYTE = 32 * 2
+
+/// The number of rows in the view buffer
+height : UBYTE = 20
+
+/// A flag that is set whenever the text buffer needs to be redrawn.
+redraw : UBYTE = TRUE
+
+/// Two contiguous 2D arrays representing the visible portion of the text buffer, whose bounds are `width` and `height`. Each array is a left-to-right, top-to-bottom sequence of character byte + control byte pairs. The control byte is a bitflag: 0x1 signals this character is selected by the cursor, 0x2 signals this is a character, 0x4 signals this is the position of the end of the file. The first array is the current text buffer, the next array is the previous text buffer. This means `view_buffer` has a total length of `width * height * 4` bytes. Storing both allows the renderer to only render characters that changed. When the screen is redrawn, the first array is copied to the second.
+view_buffer : ^UBYTE = NULLPTR
+
+/// Flag for if the user is currently holding the Ctrl key.
+is_ctrl : UBYTE = FALSE
+
+/// A set of ABGR colors for the foreground (text), background, and gutters.
 color_fg : ULONG = 0xFF3E3E3E
 color_bg : ULONG = 0xFFC1E7F6
-color_gutter : ULONG = 0xFFF0F8FF
-// color_ultradark : ULONG = 0xFF242018
+color_gutter : ULONG = 0xFFE0F8FF
+//color_ultradark : ULONG = 0xFF242018
 
-// Function used by printing library to emit characters
+/// Function used by printing library to emit characters.
 FN (RtlPrintCallbackF) RtljPrintCallback (
     IN byte : UBYTE,
     IN context : ^VOID,
@@ -86,19 +119,19 @@ FN (RtlPrintCallbackF) RtljPrintCallback (
     buffer[0] = byte
     Write(stream, &buffer[0], 1)
 END
-// Dummy function required by the runtime library
+/// Dummy function required by the runtime library.
 FN RtljLockStream (
     IN handle : ^VOID
 ) : UWORD
 END
-// Dummy function required by the runtime library
+/// Dummy function required by the runtime library.
 FN RtljUnlockStream (
     IN handle : ^VOID,
     IN lockcontext : UWORD,
 )
 END
 
-// 1-bit images for each hexidecimal digit, for displaying non-printable bytes
+/// 1-bit 8x16 images for each hexidecimal digit, for displaying non-printable bytes as "tofu" characters.
 small_digits : UINT[16] = {
     075557,
     026227,
@@ -118,6 +151,7 @@ small_digits : UINT[16] = {
     074644,
 }
 
+/// Gracefully exit the program, cleaning up any resource as necessary.
 FN Exit ()
     IF window.FrameBuffer THEN
         DestroyWindow(&window)
@@ -129,6 +163,7 @@ FN Exit ()
     EndCurrentTask()
 END
 
+/// Assure that a given condition is true, or otherwise printing an error message and exiting.
 FN Assert (
     IN condition : UBYTE,
     IN label : ^UBYTE,
@@ -141,7 +176,7 @@ FN Assert (
     END
 END
 
-// Render the current text buffer to view_buffer
+/// Render the visible portion of the text buffer to `view_buffer`.
 FN RenderViewBuffer ()
     inner_offset : UWORD
     i := PtSeek(&table, view_byte_offset, OUT inner_offset)
@@ -191,6 +226,7 @@ FN RenderViewBuffer ()
     END
 END
 
+/// Read a fox32os file path into the `FileLocation` object. If the path begins with a disk ID, e.g. "0:hello.txt", that disk ID is written to the file path object. Otherwise, the disk ID is unchanged.
 FN ParseFilePath (
     IN fp : ^UBYTE,
     IN loc : ^FileLocation,
@@ -202,9 +238,11 @@ FN ParseFilePath (
     loc^.Name = fp
 END
 
+/// Save the currently open file to disk.
 FN SaveFile ()
     file : File
     sector := Create(file_loc.Name, file_loc.Disk, &file, PtLength(&table))
+    // TODO: It is very important to gracefully handle this error rather than crashing.
     Assert(sector, "no room sory", file_loc.Disk, PtLength(&table))
     i := 0
     WHILE i < table.Pieces.Length DO
@@ -214,7 +252,7 @@ FN SaveFile ()
     END
 END
 
-// Get the position of the given index within its line. The returned value will always be less than or equal to the input.
+/// Returns the position of the given index within its line. The returned value will always be less than or equal to the input.
 FN LineStartOffsetAbsolute (
     IN position : UWORD
 ) : UWORD
@@ -225,7 +263,7 @@ FN LineStartOffsetAbsolute (
     RETURN i
 END
 
-// Get how far the end of the line is after the given index.
+/// Returns how far the end of the line is after the given index.
 FN LineEndOffsetAbsolute (
     IN position : UWORD
 ) : UWORD
@@ -239,7 +277,7 @@ FN LineEndOffsetAbsolute (
     RETURN i
 END
 
-// `LineStartOffsetAbsolute` accounting for `line_mode_visual`.
+// Returns the result of `LineStartOffsetAbsolute` accounting for `line_mode_visual`.
 FN LineStartOffset (
     IN position : UWORD
 ) : UWORD
@@ -250,6 +288,7 @@ FN LineStartOffset (
     RETURN offset
 END
 
+/// Move the cursor backward by one character.
 FN CursorMoveLeft()
     IF cursor THEN
         cursor -= 1
@@ -258,6 +297,7 @@ FN CursorMoveLeft()
     cursor_desired_offset = 0
 END
 
+/// Move the cursor forward by one character.
 FN CursorMoveRight()
     IF cursor < PtLength(&table) THEN
         cursor += 1
@@ -266,6 +306,7 @@ FN CursorMoveRight()
     cursor_desired_offset = 0
 END
 
+/// Move the cursor backward by one row of text.
 FN CursorMoveUp()
     len := LineStartOffset(cursor)
     // if we're on the first line, don't move the cursor
@@ -285,6 +326,7 @@ FN CursorMoveUp()
     cursor -= move_by + 1
 END
 
+/// Move the cursor forward by one row of text.
 FN CursorMoveDown()
     next_line_offset := LineEndOffsetAbsolute(cursor)
     next_line := cursor + next_line_offset + 1
@@ -306,6 +348,7 @@ FN CursorMoveDown()
     END
 END
 
+/// Move the cursor to the first character of the line, not respecting `line_mode_visual`.
 FN CursorMoveLineStart()
     offset := LineStartOffsetAbsolute(cursor)
     IF offset THEN
@@ -315,6 +358,7 @@ FN CursorMoveLineStart()
     cursor_desired_offset = 0
 END
 
+/// Move the cursor to the last character of the line, not respecting `line_mode_visual`. This character will always be either the newline character or the end of the file.
 FN CursorMoveLineEnd()
     offset := LineEndOffsetAbsolute(cursor)
     IF offset THEN
@@ -324,6 +368,7 @@ FN CursorMoveLineEnd()
     cursor_desired_offset = 0
 END
 
+/// Move the visible text buffer backwards by the given number of rows.
 FN ScrollUp (
     IN lines : UWORD
 )
@@ -337,6 +382,7 @@ FN ScrollUp (
     END
 END
 
+/// Move the visible text buffer forwards by the given number of rows.
 FN ScrollDown (
     IN lines : UWORD
 )
@@ -354,7 +400,8 @@ FN ScrollDown (
     END
 END
 
-FN HandleMouseClick (
+/// Respond to a mouse press from the user at a given position relative to the window.
+FN HandleMousePress (
     IN x : UINT,
     IN y : UINT,
 )
@@ -387,6 +434,7 @@ FN HandleMouseClick (
     END
 END
 
+/// Respond to a mouse button release from the user at a given position relative to the window. Currently we do nothing.
 FN HandleMouseRelease (
     IN x : UINT,
     IN y : UINT,
@@ -425,6 +473,7 @@ FN HandleCtrlKeyDown (
     END
 END
 
+/// Respond to a key being pressed by the user.
 FN HandleKeyDown (
     IN scancode : UBYTE,
 )
@@ -467,6 +516,7 @@ FN HandleKeyDown (
     END
 END
 
+/// Respond to a key being released by the user.
 FN HandleKeyUp (
     IN scancode : UBYTE,
 )
@@ -477,6 +527,7 @@ FN HandleKeyUp (
     END
 END
 
+/// Respond to a menu item being selected by the user.
 FN HandleMenuClick (
     IN menu : UWORD,
     IN item : UWORD,
@@ -485,6 +536,7 @@ FN HandleMenuClick (
     SaveFile()
 END
 
+/// Write a pixel of a given color to the window.
 FN DrawPixel (
     IN x : UINT,
     IN y : UINT,
@@ -493,6 +545,7 @@ FN DrawPixel (
     window.FrameBuffer[window.Width * y + x] = color
 END
 
+/// Render an 8x16 "tofu" character.
 FN DrawReplacementTile (
     IN c : UBYTE,
     IN x : UINT,
@@ -544,6 +597,7 @@ FN DrawReplacementTile (
     END
 END
 
+/// Render the background and gutters.
 FN DisplayInitial ()
     FillWindow(&window, color_bg)
     y := 0
@@ -554,6 +608,7 @@ FN DisplayInitial ()
     END
 END
 
+/// Called whenever `redraw` is set. Find all the tiles that have changed since last redraw, and draw each to the screen.
 FN DisplayViewBuffer ()
     y := 0
     WHILE y < height DO
@@ -589,6 +644,7 @@ FN DisplayViewBuffer ()
     END
 END
 
+/// Code that runs before `Main`, things that would be handled by the C language before main.
 FN PreMain (
     IN stream_ : ^File,
 )
@@ -597,7 +653,8 @@ FN PreMain (
     window.FrameBuffer = NULLPTR
     PtNull(&table)
 END
-    
+
+/// The entry point for our application.
 FN Main (
     IN stream_ : ^File,
     IN arg0 : ^UBYTE,
@@ -625,7 +682,7 @@ FN Main (
         PtInit(&file, &table)
         RtlPrint("opened %d:%s of %d bytes\n", file_loc.Disk, file_loc.Name, GetSize(&file))
     END
-    
+
     // create window title
     IF TRUE THEN
         window_title[7] = '0' + file_loc.Disk
@@ -653,7 +710,7 @@ FN Main (
     window_height := height * 16
     NewWindow(&window, window_title, window_width, window_height, (640 - window_width) / 2, (480 - window_height) / 2, &menu_bar, 0)
     DisplayInitial()
-    
+
     WHILE TRUE DO
         // Poll events until our queue is empty
         WHILE TRUE DO
@@ -662,7 +719,7 @@ FN Main (
             IF ev.Type == EVENT_TYPE_EMPTY THEN
                 BREAK
             ELSEIF ev.Type == EVENT_TYPE_MOUSE_CLICK THEN
-                HandleMouseClick(ev.Body.Pos.X, ev.Body.Pos.Y)
+                HandleMousePress(ev.Body.Pos.X, ev.Body.Pos.Y)
             ELSEIF ev.Type == EVENT_TYPE_MOUSE_RELEASE THEN
                 HandleMouseRelease(ev.Body.Pos.X, ev.Body.Pos.Y)
             ELSEIF ev.Type == EVENT_TYPE_KEY_DOWN THEN

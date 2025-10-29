@@ -9,7 +9,7 @@ EXTERN FN Assert (
     IN arg2 : UWORD,
 )
 
-// Given an inner type, generate a vector type and methods.
+/// Given an inner type, generate a vector type and methods.
 #MACRO VecOf (
     T,
     VecT,
@@ -22,14 +22,14 @@ EXTERN FN Assert (
     VecTRemove,
 ) [
 
-// A vector, i.e. a growable array.
+/// A vector, i.e. a growable array.
 STRUCT VecT
-    Elems : ^T, // pointer to array of elements
-    Length : UWORD, // number of elements in the list
-    Capacity : UWORD, // allocation size in elements
+    Elems : ^T, /// Pointer to array of elements.
+    Length : UWORD, /// Number of elements in the list.
+    Capacity : UWORD, /// Allocation size in elements.
 END
 
-// Construct and initialize a vector that can hold at least `cap` elements without reallocating.
+/// Constructs and initializes a vector that can hold at least `cap` elements without reallocating.
 FN VecTWithCapacity (
     IN cap : UWORD,
     IN vec : ^VecT,
@@ -46,14 +46,14 @@ FN VecTWithCapacity (
     END
 END
 
-// Construct an empty vector.
+/// Constructs an empty vector.
 FN VecTNull (
     IN vec : ^VecT,
 )
     VecTWithCapacity(0, vec)
 END
 
-// Free a vector.
+/// Frees a vector.
 FN VecTFree (
     IN self : ^VecT,
 )
@@ -62,7 +62,7 @@ FN VecTFree (
     END
 END
 
-// Assure the vector has the capacity to store a given number of total elements.
+/// Assures the vector has the capacity to store a given number of total elements.
 FN VecTGrow (
     IN self : ^VecT,
     IN necessary_capacity : UWORD,
@@ -84,7 +84,7 @@ FN VecTGrow (
     self^.Elems = new_vec.Elems
 END
 
-// Insert a new element at the end of the vector, returning a pointer to the uninitialized element.
+/// Inserts a new element at the end of the vector, returning a pointer to the uninitialized element.
 FN VecTReserveOne (
     IN self : ^VecT,
 ) : ^T
@@ -93,7 +93,7 @@ FN VecTReserveOne (
     RETURN &self^.Elems[self^.Length - 1]
 END
 
-// Insert `additional` new elements in the vector at position `index`, such that the new elements have indices [index, index + additional).
+/// Inserts `additional` new elements in the vector at position `index`, such that the new elements have indices [index, index + additional).
 FN VecTReserveAt (
     IN self : ^VecT,
     IN index : UWORD,
@@ -110,13 +110,14 @@ FN VecTReserveAt (
     RETURN &self^.Elems[index]
 END
 
-// TODO docs
+/// Removes the element at a given index, shifting later elements backwards by one.
 FN VecTRemove (
     IN self : ^VecT,
     IN index : UWORD,
 )
     self^.Length -= 1
     WHILE index < self^.Length DO
+        // This is a type generic way to copy elements. We could probably do a bytewise copy instead.
         CopyMemoryBytes(&self^.Elems[index + 1], &self^.Elems[index], SIZEOF T)
         index += 1
     END

@@ -1,10 +1,13 @@
+/// The piece table, the fundamental data structure we use for storing and editing text. It consists of two parts: an append-only list of characters `Data`, and a list of slices into these characters `Pieces`. When editing text, characters are added to `Data` if necessary and we insert, modify, or delete a piece. Operations are `O(c + n)`, where `c` is the number of characters the operation inserts and `n` is the length of `Pieces`. The theory is that, even when a very large file is opened, a user will only edit that file in a limited number of locations, meaning untouched parts of the file can be manipulated as large, singular pieces.
+
 #INCLUDE "vec.hjk"
 #INCLUDE "rtl.hjk"
 
-#DEFINE BUFFER_OVERALLOC 0
-
+/// A span of text indexing into `Pt.Data`.
 STRUCT Piece
+    /// The beginning index.
     Start : ULONG,
+    /// The length in bytes.
     Length : ULONG,
 END
 
@@ -20,13 +23,16 @@ VecOf (
     VecPieceRemove,
 )
 
-// The piece table, a simple text data structure suited for efficient, arbitrary edits across a file.
+/// The piece table, a simple text data structure suited for efficient, arbitrary edits across a file.
 STRUCT Pt
-    Data : VecUbyte, // Append-only array of all characters added to the text buffer.
-    Pieces : VecPiece, // Spans of `Data` that make up the current text buffer.
+    /// An append-only array of all characters added to the text buffer.
+    Data : VecUbyte,
+
+    /// Spans of `Data` that make up the current text buffer.
+    Pieces : VecPiece,
 END
 
-// Construct an empty piece table.
+/// Constructs an empty piece table.
 FN PtNull (
     IN table : ^Pt,
 )
@@ -34,13 +40,14 @@ FN PtNull (
     VecPieceNull(&table^.Pieces)
 END
 
-// Construct and initialize a piece table from a file.
+/// Constructs and initializes a piece table from a file.
 FN PtInit (
     IN file : ^File,
     IN table : ^Pt,
 )
     length := GetSize(file)
-    VecUbyteWithCapacity(length + BUFFER_OVERALLOC, &table^.Data)
+    // We could allocate extra space anticipating the user adding text to the file, but that's basically pointless. Under no circumstances is our bottleneck the resizing of the piece table vectors.
+    VecUbyteWithCapacity(length, &table^.Data)
     Read(file, table^.Data.Elems, length)
     table^.Data.Length = length
     VecPieceWithCapacity(1, &table^.Pieces)
@@ -49,7 +56,7 @@ FN PtInit (
     table^.Pieces.Elems^.Length = length
 END
 
-// Free a piece table.
+/// Frees a piece table.
 FN PtFree (
     IN self : ^Pt,
 )
@@ -57,6 +64,7 @@ FN PtFree (
     VecPieceFree(&self^.Pieces)
 END
 
+/// Returns the length in bytes of the text.
 FN PtLength (
     IN self : ^Pt,
 ) : UWORD
@@ -69,7 +77,7 @@ FN PtLength (
     RETURN length
 END
 
-// Given a byte index, return the index of the piece containing that byte and the byte offset within that piece.
+/// Given a byte index, returns the index of the piece containing that byte and the byte offset within that piece. The index will be within [0, Pieces.Length] inclusive and offset will be within [0, Pieces[index].Length), unless index is equal to Pieces.Length in which case offset will be 0, this last case representing the position at the end of the text buffer.
 FN PtSeek (
     IN self : ^Pt,
     IN seek_to : UWORD,
@@ -86,11 +94,12 @@ FN PtSeek (
         seek_at += len
         i += 1
     END
+    // Reached end of file
     offset = 0
     RETURN i
 END
 
-// Return the byte at a given byte index.
+/// Returns the character at a given byte index.
 FN PtAt (
     IN self : ^Pt,
     IN seek_to : UWORD,
@@ -101,7 +110,7 @@ FN PtAt (
     RETURN self^.Data.Elems[start + offset]
 END
 
-// Insert a new character at some byte offset.
+/// Inserts a new character at an index, such that the index now points to that character.
 FN PtInsert (
     IN self : ^Pt,
     IN position : UWORD,
@@ -109,9 +118,11 @@ FN PtInsert (
 )
     offset : UWORD
     piece_index := PtSeek(self, position, OUT offset)
+    // Cursor is inserting a character either at the end of a piece or at the very beginning of the text.
     IF offset == 0 THEN
         is_at_end := 0
         IF piece_index > 0 THEN
+            // TODO: Try to extend the span if the inserted character matches the next one in `Data`. This is an easy way for multiple cursors inserting characters to share a single data buffer allocation.
             original := &self^.Pieces.Elems[piece_index - 1]
             IF original^.Start + original^.Length == self^.Data.Length THEN
                 is_at_end = 1
@@ -124,6 +135,7 @@ FN PtInsert (
             piece_new^.Length = 1
         END
         VecUbyteReserveOne(&self^.Data)^ = char
+    // Cursor is inserting a character in the middle of a piece.
     ELSE
         piece_new := VecPieceReserveAt(&self^.Pieces, piece_index + 1, 2) // Allocate two pieces right *after* the current one; the first contains new data, the second the rest of the original piece
         piece_left := &self^.Pieces.Elems[piece_index]
@@ -137,7 +149,7 @@ FN PtInsert (
     END
 END
 
-// Remove the character at some byte offset.
+/// Removes the character at some byte offset.
 FN PtDelete (
     IN self : ^Pt,
     IN position : UWORD,
@@ -146,13 +158,17 @@ FN PtDelete (
     piece_index := PtSeek(self, position, OUT offset)
     Assert(piece_index < self^.Pieces.Length, "deleting character outside text buffer", piece_index, offset)
     piece := &self^.Pieces.Elems[piece_index]
+    /// Cursor is deleting the only character of the piece: delete the piece.
     IF piece^.Length == 1 THEN
         VecPieceRemove(&self^.Pieces, piece_index)
+    /// Cursor is deleting the leftmost character of the piece: shrink the piece from the left.
     ELSEIF offset == 0 THEN
         piece^.Start += 1
         piece^.Length -= 1
+    /// Cursor is deleting the rightmost character of the piece: shrink the piece from the right.
     ELSEIF offset == piece^.Length - 1 THEN
         piece^.Length -= 1
+    /// Cursor is deleting a character in the middle of the piece: split the piece in two, sans that character.
     ELSE
         new_piece := VecPieceReserveAt(&self^.Pieces, piece_index + 1, 1)
         piece = &self^.Pieces.Elems[piece_index]
@@ -162,6 +178,7 @@ FN PtDelete (
     END
 END
 
+/// Debug prints a string slice.
 FN StrDebug (
     IN str : ^UBYTE,
     IN length : UWORD,
@@ -178,7 +195,7 @@ FN StrDebug (
             RtlPrint("%c", c)
         ELSEIF c == '\n' THEN
             RtlPrint("\\n")
-        ELSE 
+        ELSE
             RtlPrint("\\x%02x", c)
         END
         i += 1
@@ -186,6 +203,7 @@ FN StrDebug (
     RtlPrint("\"")
 END
 
+/// Debug prints the data of the piece table.
 FN PtDebug (
     IN self : ^Pt,
 )
