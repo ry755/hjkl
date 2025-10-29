@@ -33,7 +33,7 @@ dogfood_build: $(OUT_IMG)
 dogfood_export:
 	cd src && \
 	for FILE in $$(ls *.jkl *.hjk); do \
-		$(RYFS) export ../$(OUT_IMG) $$FILE; \
+		../$(RYFS) export ../$(OUT_IMG) $$FILE; \
 	done
 
 dogfood: dogfood_build run dogfood_export
