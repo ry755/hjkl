@@ -23,8 +23,9 @@ menu_file_items:
 
 /// A fully qualified fox32os file path.
 STRUCT FileLocation
-    Disk : UBYTE,
-    Name : ^UBYTE,
+    // Disk : UBYTE,
+    // Name : ^UBYTE,
+    Path : ^UBYTE,
 END
 
 /// A file representing standard input and output on fox32os. This is initialized by PreMain and written to by RtlPrint.
@@ -37,7 +38,7 @@ file_loc : FileLocation
 window : Window
 
 /// The mutable character array representing the null terminated title of the window.
-window_title := "Hjkl - 0:12345678.123"
+window_title : ^UBYTE = NULLPTR
 
 /// The text data.
 table : Pt // text data
@@ -124,6 +125,9 @@ FN Exit ()
     IF view_buffer THEN
         FreeMemory(view_buffer)
     END
+    IF window_title THEN
+        FreeMemory(window_title)
+    END
     PtFree(&table)
     EndCurrentTask()
 END
@@ -196,19 +200,21 @@ FN ParseFilePath (
     IN fp : ^UBYTE,
     IN loc : ^FileLocation,
 )
-    IF fp[0] >= '0' AND fp[0] <= '9' AND fp[1] == ':' THEN
-        loc^.Disk = fp[0] - '0'
-        fp += 2
-    END
-    loc^.Name = fp
+    //IF fp[0] >= '0' AND fp[0] <= '9' AND fp[1] == ':' THEN
+    //    loc^.Disk = fp[0] - '0'
+    //    fp += 2
+    //END
+    //loc^.Name = fp
+    loc^.Path = fp
 END
 
 /// Save the currently open file to disk.
 FN SaveFile ()
     file : File
-    sector := Create(file_loc.Name, file_loc.Disk, &file, PtLength(&table))
+    disk_id := GetCurrentDiskId()
+    sector := Create(file_loc.Path, disk_id, &file, PtLength(&table))
     // TODO: It is very important to gracefully handle this error rather than crashing.
-    Assert(sector, "no room sory", file_loc.Disk, PtLength(&table))
+    Assert(sector, "no room sory", disk_id, PtLength(&table))
     i := 0
     WHILE i < table.Pieces.Length DO
         piece := &table.Pieces.Elems[i]
@@ -649,7 +655,7 @@ FN PreMain (
     IN stream_ : ^File,
 )
     stream = stream_
-    file_loc.Name = NULLPTR
+    file_loc.Path = NULLPTR
     window.FrameBuffer = NULLPTR
     PtNull(&table)
 END
@@ -669,30 +675,28 @@ FN Main (
     END
 
     // Get filepath to open
-    file_loc.Disk = GetCurrentDiskId()
+    // file_loc.Disk = GetCurrentDiskId()
     ParseFilePath(arg0, &file_loc)
 
     // Open and read file to memory
     IF TRUE THEN
         file : File
-        IF Open(file_loc.Name, file_loc.Disk, &file) THEN
+        IF Open(file_loc.Path, GetCurrentDiskId(), &file) THEN
             PtInit(&file, &table)
-            RtlPrint("opened %d:%s of %d bytes\n", file_loc.Disk, file_loc.Name, GetSize(&file))
+            RtlPrint("Opened \"%s\" of %d bytes\n", file_loc.Path, GetSize(&file))
         ELSE
-            RtlPrint("opened new file %d:%s\n", file_loc.Disk, file_loc.Name)
+            IF Create(file_loc.Path, GetCurrentDiskId(), &file, 0) == 0 THEN
+                RtlPrint("Could not open file at \"%s\"\n", file_loc.Path)
+                Exit()
+            END
+            Delete(&file)
+            RtlPrint("Opened new file \"%s\"\n", file_loc.Path)
         END
     END
 
     // create window title
-    IF TRUE THEN
-        window_title[7] = '0' + file_loc.Disk
-        i := 0
-        WHILE TRUE DO
-            window_title[i + 9] = file_loc.Name[i]
-            IF file_loc.Name[i] == 0 THEN BREAK END
-            i += 1
-        END
-    END
+    window_title = AllocateMemory(StringLength(file_loc.Path) + 1)
+    CopyString(file_loc.Path, window_title)
 
     // allocate the view buffer and imagine the previous frame is blank
     view_buffer = AllocateMemory(width * height * 4)

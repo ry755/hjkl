@@ -220,4 +220,9 @@ Create:
     call create
     mov a3, r0
     ret
+
+Delete:
+.global Delete
+    mov r0, a0
+    jmp delete
 ]

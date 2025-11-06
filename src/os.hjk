@@ -150,3 +150,7 @@ EXTERN FN Create (
     IN file : ^File,
     IN size : ULONG,
 ) : ULONG
+
+EXTERN FN Delete (
+    IN file : ^File,
+)
