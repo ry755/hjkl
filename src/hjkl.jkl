@@ -675,12 +675,12 @@ FN Main (
     // Open and read file to memory
     IF TRUE THEN
         file : File
-        IF NOT Open(file_loc.Name, file_loc.Disk, &file) THEN
-            RtlPrint("Could not find file %s\n", file_loc.Name)
-            Exit()
+        IF Open(file_loc.Name, file_loc.Disk, &file) THEN
+            PtInit(&file, &table)
+            RtlPrint("opened %d:%s of %d bytes\n", file_loc.Disk, file_loc.Name, GetSize(&file))
+        ELSE
+            RtlPrint("opened new file %d:%s\n", file_loc.Disk, file_loc.Name)
         END
-        PtInit(&file, &table)
-        RtlPrint("opened %d:%s of %d bytes\n", file_loc.Disk, file_loc.Name, GetSize(&file))
     END
 
     // create window title
