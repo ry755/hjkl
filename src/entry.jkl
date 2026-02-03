@@ -11,7 +11,7 @@
 app_name: .ds "Hjkl" .db 0
 app_desc: .ds "Non-Modal Text Editor" .db 0
 app_author: .ds "OliveIsAWord (github.com/OliveIsAWord/hjkl)" .db 0
-app_version: .ds "0.2.0" .db 0
+app_version: .ds "0.1.1" .db 0
 
 app_entry:
 .global app_entry
